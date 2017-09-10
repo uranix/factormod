@@ -74,42 +74,13 @@ std::multiset<poly> factor(const poly &f) {
     return ret;
 }
 
-void rec(const std::vector<poly> &fact, const std::vector<int> &pows, const int bits,
-    std::vector<int> &p, std::vector<std::string> &ans, size_t k = 0)
-{
-    if (k == pows.size()) {
-        int d1 = 0;
-        int d2 = 0;
-        for (size_t i = 0; i < k; i++) {
-            int fd = fact[i].degree();
-            d1 += p[i] * fd;
-            d2 += (pows[i] - p[i]) * fd;
-        }
-        if (d1 < bits && d2 < bits) {
-            poly p1(bits, {1});
-            poly p2(bits, {1});
-            for (size_t i = 0; i < k; i++) {
-                int j = 0;
-                for (; j < p[i]; j++)
-                    p1 = p1 * fact[i];
-                for (; j < pows[i]; j++)
-                    p2 = p2 * fact[i];
-            }
-            ans.push_back(p1.to_string() + " " + p2.to_string());
-        }
-        return;
-    }
-    for (p[k] = 0; p[k] <= pows[k]; p[k]++)
-        rec(fact, pows, bits, p, ans, k+1);
-}
-
 int main() {
 
     int bits;
     std::cin >> bits;
     poly f(2*bits, std::cin);
 
-    //std::cout << f.pretty() << std::endl;
+    std::cout << "Factors of " << f.pretty() << ":" << std::endl;
 
     auto ff = factor(f);
 
@@ -123,13 +94,8 @@ int main() {
     for (size_t i = 0; i < factors.size(); i++)
         powers.push_back(ff.count(factors[i]));
 
-    std::vector<int> pows(factors.size());
-    std::vector<std::string> ans;
-    rec(factors, powers, bits, pows, ans);
-    std::sort(ans.begin(), ans.end());
-
-    for (const auto &s : ans)
-        std::cout << s << std::endl;
+    for (size_t i = 0; i < factors.size(); i++)
+        std::cout << "(" << factors[i].pretty() << ") ^ " << powers[i] << std::endl;
 
     return 0;
 }
