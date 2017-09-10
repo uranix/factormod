@@ -1,48 +1,135 @@
 #include <iostream>
 #include "poly.h"
+#include "matrix.h"
 
-void test() {
-    auto f = poly(32, {1, 1, 0, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 0, 0, 1});
-    auto x2 = poly(32, {0, 0, 1});
-    auto q = poly(32, {1});
-    std::cout << "f = " << f.pretty() << std::endl;
-    auto fp = f.derivative();
-    std::cout << "f' = " << fp.pretty() << std::endl;
-    std::cout << "gcd(f, f') = " << gcd(f, fp).pretty() << std::endl;
-    for (int i = 0; i < f.degree(); i++) {
-        std::cout << "x^" << (2*i) << " === " << q.pretty() << " (mod f)" << std::endl;
-        q = q * x2;
-        auto c = q / f;
-        q = c.rem;
+#include <sstream>
+#include <deque>
+#include <set>
+#include <algorithm>
+
+// Berlekamp algo, square free case
+std::set<poly> factor_sq_free(const poly &f) {
+    assert(f.double_factor().is_unit());
+
+    auto B = f.powers_mod();
+    B.sub_unit_diag();
+    const auto &piv = B.to_rref();
+    const auto &hv = B.rref_nullspace(piv);
+
+    std::deque<poly> hq;
+    for (const auto &p : hv)
+        hq.push_back(p);
+    assert(hq.front().is_unit());
+    hq.pop_front();
+
+    std::set<poly> in, out;
+    in.insert(f);
+
+    while (!hq.empty()) {
+        const poly &h0 = hq.front();
+        poly h1(h0);
+        h1.xor_bit(0, 1);
+        out.clear();
+        for (const auto &p : in) {
+            const poly d0 = gcd(p, h0);
+            const poly d1 = gcd(p, h1);
+            if (!d0.is_unit())
+                out.insert(d0);
+            if (!d1.is_unit())
+                out.insert(d1);
+        }
+        hq.pop_front();
+        std::swap(in, out);
     }
+    return in;
+}
+
+// generic case
+std::multiset<poly> factor(const poly &f) {
+    const poly d = f.double_factor();
+    if (d.is_unit()) {
+        const auto &facs = factor_sq_free(f);
+        std::multiset<poly> ret;
+        for (const auto &f : facs)
+            ret.insert(f);
+        return ret;
+    }
+    if (d == f) {
+        // f' = 0, f only has even powers
+        poly g(f.bits());
+        for (int i = 0; i <= f.degree(); i += 2)
+            g.xor_bit(i / 2, f[i]);
+        std::multiset<poly> gf = factor(g);
+        std::multiset<poly> ret;
+        for (const auto &p : gf) {
+            ret.insert(p);
+            ret.insert(p);
+        }
+        return ret;
+    }
+    std::multiset<poly> ret = factor(d);
+    std::set<poly> add = factor_sq_free((f / d).quot);
+    for (const auto &p : add)
+        ret.insert(p);
+    return ret;
+}
+
+void rec(const std::vector<poly> &fact, const std::vector<int> &pows, const int bits,
+    std::vector<int> &p, std::vector<std::string> &ans, size_t k = 0)
+{
+    if (k == pows.size()) {
+        int d1 = 0;
+        int d2 = 0;
+        for (size_t i = 0; i < k; i++) {
+            int fd = fact[i].degree();
+            d1 += p[i] * fd;
+            d2 += (pows[i] - p[i]) * fd;
+        }
+        if (d1 < bits && d2 < bits) {
+            poly p1(bits, {1});
+            poly p2(bits, {1});
+            for (size_t i = 0; i < k; i++) {
+                int j = 0;
+                for (; j < p[i]; j++)
+                    p1 = p1 * fact[i];
+                for (; j < pows[i]; j++)
+                    p2 = p2 * fact[i];
+            }
+            ans.push_back(p1.to_string() + " " + p2.to_string());
+        }
+        return;
+    }
+    for (p[k] = 0; p[k] <= pows[k]; p[k]++)
+        rec(fact, pows, bits, p, ans, k+1);
 }
 
 int main() {
-    poly f(32, {1, 0, 1});
-    auto g = f*f;
-    auto h = g*f;
-    auto h2 = f*g;
-    auto u = h + h2;
 
-    std::cout << "f = " << f.pretty() << std::endl;
-    std::cout << "g = f*f = " << g.pretty() << std::endl;
-    std::cout << "h = f*g = " << h.pretty() << std::endl;
-    std::cout << "h2 = g*f = " << h2.pretty() << std::endl;
-    std::cout << "u = h + h2 = " << u.pretty() << std::endl;
+    int bits;
+    std::cin >> bits;
+    poly f(2*bits, std::cin);
 
-    f = poly(32, {1, 1, 1, 0, 0, 0, 1, 0, 0, 1, 1, 0, 0, 1, 1});
-    g = poly(32, {1, 1, 0, 1, 1, 0, 0, 0, 1});
-    std::cout << "f = " << f.pretty() << std::endl;
-    std::cout << "g = " << g.pretty() << std::endl;
-    auto qr = f / g;
-    std::cout << "q = " << qr.quot.pretty() << std::endl;
-    std::cout << "r = " << qr.rem.pretty() << std::endl;
-    auto rf = qr.quot*g+qr.rem;
-    std::cout << "q*g + r = " << rf.pretty() << std::endl;
-    std::cout << "gcd(h*h*h, h*f) = " << gcd(h*h*h, h*f).pretty() << std::endl;
-    std::cout << "f' = " << f.derivative().pretty() << std::endl;
+    //std::cout << f.pretty() << std::endl;
 
-    test();
+    auto ff = factor(f);
+
+    std::vector<poly> factors;
+    std::vector<int> powers;
+
+    for (const auto &p : ff) {
+        if (factors.empty() || !(factors.back() == p))
+            factors.push_back(p);
+    }
+    for (size_t i = 0; i < factors.size(); i++)
+        powers.push_back(ff.count(factors[i]));
+
+    std::vector<int> pows(factors.size());
+    std::vector<std::string> ans;
+    rec(factors, powers, bits, pows, ans);
+    std::sort(ans.begin(), ans.end());
+
+    for (const auto &s : ans)
+        std::cout << s << std::endl;
 
     return 0;
 }
